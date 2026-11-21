@@ -15,6 +15,15 @@ type InMemoryDatastore struct {
 	mu     sync.Mutex
 }
 
+func NewInMemoryDatastore(logger internal.Logger) *InMemoryDatastore {
+	store := make(map[string]Data)
+	return &InMemoryDatastore{
+		store:  store,
+		logger: logger,
+		mu:     sync.Mutex{},
+	}
+}
+
 func (i *InMemoryDatastore) Store(ctx context.Context, data []byte, id string) (string, error) {
 	ctxErr := ctx.Err()
 	if ctxErr != nil {
