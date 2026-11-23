@@ -151,8 +151,6 @@ func (i *InMemoryDatastore) Update(ctx context.Context, data []byte, id string, 
 		i.logger.Error("failed to update data for id", "id", id, "id not found in map")
 		return fmt.Errorf("failed to update data - id not found in map: %w", ErrNotFound)
 	}
-	// Checking the supplied key is the correct key for this id, the id being the map key.
-	// So does the the encryption key in the entry stored for that map key(the id) match the encryption key provided as a param
 
 	verified, err := encryption.HashVerify(key, entry.encryptionKey, i.logger)
 	if !verified {

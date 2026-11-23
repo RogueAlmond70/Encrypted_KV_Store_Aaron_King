@@ -36,7 +36,7 @@ func NewPostgresDatastore(logger internal.Logger, sqldb *sql.DB, cfg config.Conf
 	}
 }
 
-func (p *PostgresDatastore) Migrate() error { // make this a function, it doesn't need to be a method right now
+func (p *PostgresDatastore) Migrate() error { 
 	goose.SetBaseFS(migrationFiles)
 
 	if err := goose.SetDialect("postgres"); err != nil {

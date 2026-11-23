@@ -18,6 +18,19 @@ Copy `.env.example` to `.env` to override settings. A `.env` in this directory, 
 
 On Windows PowerShell, call `curl.exe`. `curl` is an alias for `Invoke-WebRequest`.
 
+## Docker
+
+`docker compose up --build` starts Postgres and two servers from the same image.
+
+| Port | Backend |
+| --- | --- |
+| `8080` | in-memory |
+| `8081` | Postgres |
+
+The Postgres container uses host name `postgres` on the Compose network. The database `kv` is created by the Postgres image. The server applies the goose migration on startup. Data for that server is kept in the `pgdata` volume, so it is still there after `postgres-store` restarts. Restarting the memory server drops its entries.
+
+Use the same requests as below, and change `8080` to `8081` to exercise Postgres.
+
 ## Store, then retrieve
 
 `data` in JSON is standard base64, because the field is `[]byte`. The string below is the bytes `hello`.
