@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -36,14 +37,14 @@ func main() {
 
 		if err != nil {
 			logger.Error("failed to setup postgres datastore", "error", err)
-			os.Exit(1) // TODO: Check exit code
+			os.Exit(1) 
 		}
 		defer db.Close()
 
 		pg := datastore.NewPostgresDatastore(logger, db, *config)
 		err = pg.Migrate()
 		if err != nil {
-			logger.Error("failed to setup postgres datastore", "migration failed", "error", err)
+			logger.Error("failed to setup postgres datastore", "reason", "migration failed", "error", err)
 			os.Exit(1)
 		}
 		keyvalue = pg
@@ -53,7 +54,7 @@ func main() {
 		keyvalue = datastore.NewInMemoryDatastore(logger, *config)
 		logger.Info("In Memory datastore configured and running")
 	default:
-		logger.Error("failed to setup datastore", "unknown datastore type", "type", config.DatastoreType)
+		logger.Error("failed to setup datastore", "reason", "unknown datastore type", "type", config.DatastoreType)
 		os.Exit(1)
 	}
 
@@ -84,7 +85,7 @@ func main() {
 			id := r.PathValue("id")
 			encryptionKey, err := keyvalue.Store(r.Context(), storerequest.Data, id)
 			if err != nil {
-				http.Error(w, "failed to handle request", http.StatusInternalServerError)
+				writeStoreError(w, err)
 				return
 			}
 
@@ -104,7 +105,7 @@ func main() {
 			}
 			data, err := keyvalue.Retrieve(r.Context(), id, key)
 			if err != nil {
-				http.Error(w, "failed to handle request", http.StatusInternalServerError)
+				writeStoreError(w, err)
 				return
 			}
 
@@ -133,7 +134,7 @@ func main() {
 			}
 			err = keyvalue.Update(r.Context(), data, id, key)
 			if err != nil {
-				http.Error(w, "failed to handle request", http.StatusInternalServerError)
+				writeStoreError(w, err)
 				return
 			}
 
@@ -151,7 +152,7 @@ func main() {
 
 			err = keyvalue.Delete(r.Context(), id, key)
 			if err != nil {
-				http.Error(w, "failed to handle request", http.StatusInternalServerError)
+				writeStoreError(w, err)
 				return
 			}
 			w.WriteHeader(http.StatusNoContent)
@@ -162,6 +163,21 @@ func main() {
 
 	})
 	http.ListenAndServe(":8080", mux)
+}
+
+func writeStoreError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, datastore.ErrInvalidInput):
+		http.Error(w, "invalid request", http.StatusBadRequest)
+	case errors.Is(err, datastore.ErrNotFound):
+		http.Error(w, "entry not found", http.StatusNotFound)
+	case errors.Is(err, datastore.ErrInvalidKey):
+		http.Error(w, "encryption key incorrect", http.StatusUnauthorized)
+	case errors.Is(err, datastore.ErrAlreadyExists):
+		http.Error(w, "entry already exists", http.StatusConflict)
+	default:
+		http.Error(w, "failed to handle request", http.StatusInternalServerError)
+	}
 }
 
 // loadProjectEnv applies the repository .env over any inherited environment.

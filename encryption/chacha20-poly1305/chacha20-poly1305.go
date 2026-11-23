@@ -42,7 +42,7 @@ func (c *CHACHA20_POLY1305) Encrypt(data []byte) ([]byte, error) {
 
 func (c *CHACHA20_POLY1305) Decrypt(cipherdata []byte) ([]byte, error) {
 	if len(cipherdata) < c.AEAD.NonceSize()+c.AEAD.Overhead() {
-		return nil, fmt.Errorf("failed to decrypt data - cipherdata too short") // TODO: sentinel error
+		return nil, fmt.Errorf("failed to decrypt data - cipherdata too short") 
 	}
 
 	nonce, cipherdata := cipherdata[:c.AEAD.NonceSize()], cipherdata[c.AEAD.NonceSize():]

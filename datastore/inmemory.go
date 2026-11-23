@@ -34,11 +34,11 @@ func (i *InMemoryDatastore) Store(ctx context.Context, data []byte, id string) (
 	}
 	if id == "" {
 		i.logger.Error("failed to store data", "missing id")
-		return nil, fmt.Errorf("failed to store data, missing id")
+		return nil, fmt.Errorf("failed to store data, missing id: %w", ErrInvalidInput)
 	}
 	if data == nil {
 		i.logger.Error("failed to store data", "nil data")
-		return nil, fmt.Errorf("failed to store data - nil data")
+		return nil, fmt.Errorf("failed to store data - nil data: %w", ErrInvalidInput)
 	}
 	// check for existing id
 	i.mu.Lock()
@@ -47,7 +47,7 @@ func (i *InMemoryDatastore) Store(ctx context.Context, data []byte, id string) (
 	_, ok := i.store[id]
 	if ok {
 		i.logger.Error("failed to store data", "reason", "id already exists")
-		return nil, fmt.Errorf("failed to store data - id already exists")
+		return nil, fmt.Errorf("failed to store data - id already exists: %w", ErrAlreadyExists)
 	}
 
 	key, err := encryption.GenerateEncryptionKey(i.logger)
@@ -89,11 +89,11 @@ func (i *InMemoryDatastore) Retrieve(ctx context.Context, id string, key []byte)
 	}
 	if id == "" {
 		i.logger.Error("failed to retrieve data", "missing id")
-		return nil, fmt.Errorf("failed to retrieve data, missing id")
+		return nil, fmt.Errorf("failed to retrieve data, missing id: %w", ErrInvalidInput)
 	}
 	if key == nil {
 		i.logger.Error("failed to retrieve data", "missing key")
-		return nil, fmt.Errorf("failed to retrieve data, missing key")
+		return nil, fmt.Errorf("failed to retrieve data, missing key: %w", ErrInvalidInput)
 	}
 
 	i.mu.Lock()
@@ -102,13 +102,13 @@ func (i *InMemoryDatastore) Retrieve(ctx context.Context, id string, key []byte)
 	requestedData, ok := i.store[id]
 	if !ok {
 		i.logger.Error("failed to retrieve data", "no data found for id", "id", id)
-		return nil, fmt.Errorf("failed to retrieve data for key provided")
+		return nil, fmt.Errorf("failed to retrieve data for key provided: %w", ErrNotFound)
 	}
 
 	verified, err := encryption.HashVerify(key, requestedData.encryptionKey, i.logger)
 	if !verified {
 		i.logger.Error("failed to retrieve data for id", "id", id, "reason", "encryption key incorrect")
-		return nil, fmt.Errorf("failed to retrieve data - encryption key incorrect")
+		return nil, fmt.Errorf("failed to retrieve data - encryption key incorrect: %w", ErrInvalidKey)
 	}
 	if err != nil {
 		i.logger.Error("failed to retrieve data for id", "id", id, "error", err)
@@ -132,16 +132,16 @@ func (i *InMemoryDatastore) Update(ctx context.Context, data []byte, id string, 
 	}
 	if id == "" {
 		i.logger.Error("failed to update data", "missing id")
-		return fmt.Errorf("failed to update data, missing id")
+		return fmt.Errorf("failed to update data, missing id: %w", ErrInvalidInput)
 	}
 	if key == nil {
 		i.logger.Error("failed to update data", "missing key")
-		return fmt.Errorf("failed to update data, missing key")
+		return fmt.Errorf("failed to update data, missing key: %w", ErrInvalidInput)
 	}
 
 	if data == nil {
 		i.logger.Error("failed to update data", "nil data")
-		return fmt.Errorf("failed to update data - nil data")
+		return fmt.Errorf("failed to update data - nil data: %w", ErrInvalidInput)
 	}
 
 	i.mu.Lock()
@@ -149,7 +149,7 @@ func (i *InMemoryDatastore) Update(ctx context.Context, data []byte, id string, 
 	entry, ok := i.store[id]
 	if !ok {
 		i.logger.Error("failed to update data for id", "id", id, "id not found in map")
-		return fmt.Errorf("failed to update data - id not found in map")
+		return fmt.Errorf("failed to update data - id not found in map: %w", ErrNotFound)
 	}
 	// Checking the supplied key is the correct key for this id, the id being the map key.
 	// So does the the encryption key in the entry stored for that map key(the id) match the encryption key provided as a param
@@ -157,7 +157,7 @@ func (i *InMemoryDatastore) Update(ctx context.Context, data []byte, id string, 
 	verified, err := encryption.HashVerify(key, entry.encryptionKey, i.logger)
 	if !verified {
 		i.logger.Error("failed to update data for id", "id", id, "reason", "encryption key incorrect")
-		return fmt.Errorf("failed to update data - encryption key incorrect")
+		return fmt.Errorf("failed to update data - encryption key incorrect: %w", ErrInvalidKey)
 	}
 	if err != nil {
 		i.logger.Error("failed to update data for id", "id", id, "error", err)
@@ -193,24 +193,24 @@ func (i *InMemoryDatastore) Delete(ctx context.Context, id string, key []byte) e
 	}
 	if id == "" {
 		i.logger.Error("failed to delete data", "missing id")
-		return fmt.Errorf("failed to delete data, missing id")
+		return fmt.Errorf("failed to delete data, missing id: %w", ErrInvalidInput)
 	}
 	if key == nil {
 		i.logger.Error("failed to delete data", "missing key")
-		return fmt.Errorf("failed to delete data, missing key")
+		return fmt.Errorf("failed to delete data, missing key: %w", ErrInvalidInput)
 	}
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	entry, ok := i.store[id]
 	if !ok {
 		i.logger.Error("failed to delete data for id", "id", id, "id not found in map")
-		return fmt.Errorf("failed to delete data - id not found in map")
+		return fmt.Errorf("failed to delete data - id not found in map: %w", ErrNotFound)
 	}
 
 	verified, err := encryption.HashVerify(key, entry.encryptionKey, i.logger)
 	if !verified {
 		i.logger.Error("failed to delete data for id", "id", id, "reason", "encryption key incorrect")
-		return fmt.Errorf("failed to delete data - encryption key incorrect")
+		return fmt.Errorf("failed to delete data - encryption key incorrect: %w", ErrInvalidKey)
 	}
 	if err != nil {
 		i.logger.Error("failed to delete data for id", "id", id, "error", err)

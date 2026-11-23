@@ -2,6 +2,14 @@ package datastore
 
 import (
 	"context"
+	"errors"
+)
+
+var (
+	ErrInvalidInput  = errors.New("invalid input")
+	ErrNotFound      = errors.New("entry not found")
+	ErrInvalidKey    = errors.New("encryption key incorrect")
+	ErrAlreadyExists = errors.New("entry already exists")
 )
 
 type DataStore interface {

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"errors"
 	"fmt"
 
 	aes_gcm "github.com/RogueAlmond70/Encryped_KV_Store_Aaron_King/encryption/aes-gcm"
@@ -11,6 +12,10 @@ import (
 	chacha20_poly1305 "github.com/RogueAlmond70/Encryped_KV_Store_Aaron_King/encryption/chacha20-poly1305"
 	"github.com/RogueAlmond70/Encryped_KV_Store_Aaron_King/internal"
 )
+
+// ErrInvalidAlgorithm is returned when the named cipher is not one of
+// AES_GCM, AES_GCM_SIV, or CHACHA20_POLY1305.
+var ErrInvalidAlgorithm = errors.New("invalid cipher type")
 
 func GenerateEncryptionKey(logger internal.Logger) ([]byte, error) {
 	key := make([]byte, 32)
@@ -74,7 +79,7 @@ func EncryptData(data []byte, encryptionKey []byte, id string, logger internal.L
 		return data, nil
 
 	default:
-		return nil, fmt.Errorf("invalid cipher type: %s", algorithm)
+		return nil, fmt.Errorf("%w: %s", ErrInvalidAlgorithm, algorithm)
 	}
 }
 
@@ -128,13 +133,10 @@ func DecryptData(data []byte, encryptionKey []byte, id string, logger internal.L
 		}
 		return data, nil
 	default:
-		return nil, fmt.Errorf("invalid cipher type: %s", algorithm)
+		return nil, fmt.Errorf("%w: %s", ErrInvalidAlgorithm, algorithm)
 	}
 }
 
-// TODO: Prepare discussion points on timing attacks, and why SHA-256 over something more secure like bcrypt
-// bcrypt is designed to make guessing human-generated passwords expensive. Ours is generated randomly with 256 bits of entropy, so
-// it isn't needed - also brute forcing a random 256 key is computationally infeasible
 func KeyHash(key []byte, logger internal.Logger) ([]byte, error) {
 	if key == nil {
 		logger.Error("failed to hash encryption key", "no key provided")
@@ -165,9 +167,9 @@ func HashVerify(key []byte, expectedHash []byte, logger internal.Logger) (bool, 
 		return false, fmt.Errorf("failed to verify encryption key hash - provided encryption key hash does not match")
 	}
 
-	if subtle.ConstantTimeCompare(expectedHash, storedHash) != 1 { // TODO: Consider hashing / timing attacks. ConstantTimeCompare does not return early when two hashes are the same length - providing some degree of protection against timing attacks
+	if subtle.ConstantTimeCompare(expectedHash, storedHash) != 1 {
 		logger.Error("failed to verify encryption key hash", "provided encryption key hash does not match")
-		return false, fmt.Errorf("failed to verify encryption key hash - provided encryption key hash does not match") // TODO: Create sentinel error for testing later
+		return false, fmt.Errorf("failed to verify encryption key hash - provided encryption key hash does not match")
 	}
 	return true, nil
 }
