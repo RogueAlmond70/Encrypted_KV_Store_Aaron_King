@@ -159,34 +159,3 @@ Aim to spend around 2 hours on this task; those new to Go may find they need
 longer, but are encouraged to not spend significantly more once the above
 key-value store is implemented.
 
----
-
-Thoughts
-
-Key Value store should have the backing datastore abstracted, with a postgres implementation and an in memory map implementation
-
-A REST API is a sensible starting point. HTTP should be sufficient, gRPC would work equally well. Make sure you read up on pros and cons of each.
-
-Must have bells and whistles:
-
-- structured logging
-- prometheus metrics
-- abstracted backing datastore
-- robust concurrency support
-
-Structure:
-
-- REST endpoints in main.go, calling functions in KeyValue.go
-- KeyValue object defined in KeyValue.go
-- Core functionality in KeyValue.go, calling abstractions of - a DataStore interface
-- In Memory implementation
-- Postgress implementation
-
-Additional Notes:
-
-- Leave detailed comments
-- Include comments on time complexity of operations
-
-Questions:
-
-- What is it storing? That's been left open, so []byte would be logical
