@@ -161,7 +161,11 @@ func main() {
 		}
 
 	})
-	http.ListenAndServe(":8080", mux)
+	err = http.ListenAndServe(":8080", mux)
+	if err != nil {
+		logger.Error("failed to start mux", "error", err)
+		os.Exit(1)
+	}
 }
 
 type statusRecorder struct {
