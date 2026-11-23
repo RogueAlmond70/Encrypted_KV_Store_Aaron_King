@@ -22,15 +22,16 @@ func getEnv(key, defaultVal string) string {
 }
 
 type Config struct {
-	PostgresHost       string
-	PostgresPort       int
-	PostgresUser       string
-	PostgresPassword   string
-	PostgresDbName     string
-	PostgresSSLMode    string
-	PostgresRetry      int
-	PostgresRetryDelay time.Duration
-	DatastoreType      string
+	PostgresHost        string
+	PostgresPort        int
+	PostgresUser        string
+	PostgresPassword    string
+	PostgresDbName      string
+	PostgresSSLMode     string
+	PostgresRetry       int
+	PostgresRetryDelay  time.Duration
+	DatastoreType       string
+	EncryptionAlgorithm string
 }
 
 func LoadConfig() (*Config, error) {
@@ -49,14 +50,15 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &Config{
-		PostgresHost:       getEnv("POSTGRES_HOST", "localhost"),
-		PostgresPort:       postgresPort,
-		PostgresRetry:      postgresRetry,
-		PostgresRetryDelay: postgresRetryDelay,
-		PostgresUser:       getEnv("POSTGRES_USER", ""),
-		PostgresPassword:   getEnv("POSTGRES_PASSWORD", ""),
-		PostgresDbName:     postgresDBName(),
-		PostgresSSLMode:    getEnv("POSTGRES_SSL_MODE", "disable"),
-		DatastoreType:      getEnv("DATASTORE_TYPE", "MEMORY"),
+		PostgresHost:        getEnv("POSTGRES_HOST", "localhost"),
+		PostgresPort:        postgresPort,
+		PostgresRetry:       postgresRetry,
+		PostgresRetryDelay:  postgresRetryDelay,
+		PostgresUser:        getEnv("POSTGRES_USER", ""),
+		PostgresPassword:    getEnv("POSTGRES_PASSWORD", ""),
+		PostgresDbName:      postgresDBName(),
+		PostgresSSLMode:     getEnv("POSTGRES_SSL_MODE", "disable"),
+		DatastoreType:       getEnv("DATASTORE_TYPE", "MEMORY"),
+		EncryptionAlgorithm: getEnv("ENCRYPTION_ALGORITHM", "AES_GCM"),
 	}, nil
 }

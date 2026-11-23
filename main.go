@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -21,7 +22,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	config, err := config.LoadConfig() // TODO: Investigate whether you want this to be a pointer to config
+	config, err := config.LoadConfig()
 	if err != nil {
 		logger.Error("failed to load config", "error", err)
 		os.Exit(1)
@@ -49,7 +50,7 @@ func main() {
 		logger.Info("POSTGRES datastore configured and running")
 
 	case "MEMORY":
-		keyvalue = datastore.NewInMemoryDatastore(logger)
+		keyvalue = datastore.NewInMemoryDatastore(logger, *config)
 		logger.Info("In Memory datastore configured and running")
 	default:
 		logger.Error("failed to setup datastore", "unknown datastore type", "type", config.DatastoreType)
@@ -91,12 +92,16 @@ func main() {
 			w.WriteHeader(http.StatusCreated)
 
 			json.NewEncoder(w).Encode(map[string]string{
-				"key": encryptionKey,
+				"key": base64.StdEncoding.EncodeToString(encryptionKey),
 			})
 
 		case http.MethodGet:
 			id := r.PathValue("id")
-			key := r.Header.Get("X-Encryption-Key")
+			key, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Encryption-Key"))
+			if err != nil {
+				http.Error(w, "failed to handle request", http.StatusBadRequest)
+				return
+			}
 			data, err := keyvalue.Retrieve(r.Context(), id, key)
 			if err != nil {
 				http.Error(w, "failed to handle request", http.StatusInternalServerError)
@@ -121,7 +126,11 @@ func main() {
 			}
 
 			data := updaterequest.Data
-			key := r.Header.Get("X-Encryption-Key")
+			key, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Encryption-Key"))
+			if err != nil {
+				http.Error(w, "failed to handle request", http.StatusBadRequest)
+				return
+			}
 			err = keyvalue.Update(r.Context(), data, id, key)
 			if err != nil {
 				http.Error(w, "failed to handle request", http.StatusInternalServerError)
@@ -134,7 +143,11 @@ func main() {
 			defer r.Body.Close()
 			id := r.PathValue("id")
 
-			key := r.Header.Get("X-Encryption-Key")
+			key, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Encryption-Key"))
+			if err != nil {
+				http.Error(w, "failed to handle request", http.StatusBadRequest)
+				return
+			}
 
 			err = keyvalue.Delete(r.Context(), id, key)
 			if err != nil {
@@ -148,6 +161,7 @@ func main() {
 		}
 
 	})
+	http.ListenAndServe(":8080", mux)
 }
 
 // loadProjectEnv applies the repository .env over any inherited environment.

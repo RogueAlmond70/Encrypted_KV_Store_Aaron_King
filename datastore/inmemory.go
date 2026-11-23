@@ -13,60 +13,75 @@ type InMemoryDatastore struct {
 	store  (map[string]Data)
 	logger internal.Logger
 	mu     sync.Mutex
+	cfg    internal.Config
 }
 
-func NewInMemoryDatastore(logger internal.Logger) *InMemoryDatastore {
+func NewInMemoryDatastore(logger internal.Logger, cfg internal.Config) *InMemoryDatastore {
 	store := make(map[string]Data)
 	return &InMemoryDatastore{
 		store:  store,
 		logger: logger,
 		mu:     sync.Mutex{},
+		cfg:    cfg,
 	}
 }
 
-func (i *InMemoryDatastore) Store(ctx context.Context, data []byte, id string) (string, error) {
+func (i *InMemoryDatastore) Store(ctx context.Context, data []byte, id string) ([]byte, error) {
 	ctxErr := ctx.Err()
 	if ctxErr != nil {
 		i.logger.Error("failed to store data for id", "id", id, "error", ctxErr)
-		return "", fmt.Errorf("failed to store data for id: %w", ctxErr)
+		return nil, fmt.Errorf("failed to store data for id: %w", ctxErr)
 	}
 	if id == "" {
 		i.logger.Error("failed to store data", "missing id")
-		return "", fmt.Errorf("failed to store data, missing id")
+		return nil, fmt.Errorf("failed to store data, missing id")
 	}
 	if data == nil {
 		i.logger.Error("failed to store data", "nil data")
-		return "", fmt.Errorf("failed to store data - nil data")
+		return nil, fmt.Errorf("failed to store data - nil data")
 	}
-
-	eKey, err := encryption.GenerateEncryptionKey()
-	if err != nil {
-		i.logger.Error("failed to store data for id", "id", id, "error", err)
-		return "", fmt.Errorf("failed to store data: %w", err)
-	}
-
-	encryptedData, err := encryption.EncryptData(data, eKey)
-	if err != nil {
-		i.logger.Error("failed to store data for id", id, "error", err)
-		return "", fmt.Errorf("failed to store data: %w", err)
-	}
-
+	// check for existing id
 	i.mu.Lock()
 	defer i.mu.Unlock()
+
+	_, ok := i.store[id]
+	if ok {
+		i.logger.Error("failed to store data", "reason", "id already exists")
+		return nil, fmt.Errorf("failed to store data - id already exists")
+	}
+
+	key, err := encryption.GenerateEncryptionKey(i.logger)
+	if err != nil {
+		i.logger.Error("failed to store data for id", "id", id, "error", err)
+		return nil, fmt.Errorf("failed to store data: %w", err)
+	}
+
+	encryptedData, err := encryption.EncryptData(data, key, id, i.logger, i.cfg.EncryptionAlgorithm)
+	if err != nil {
+		i.logger.Error("failed to store data for id", id, "error", err)
+		return nil, fmt.Errorf("failed to store data: %w", err)
+	}
 
 	if i.store == nil {
 		i.store = make(map[string]Data)
 	}
 
-	i.store[id] = Data{
-		data:          encryptedData,
-		encryptionKey: eKey,
+	hashedKey, err := encryption.KeyHash(key, i.logger)
+	if err != nil {
+		i.logger.Error("failed to store data for id", "id", id, "error", err)
+		return nil, fmt.Errorf("failed to store data: %w", err)
 	}
 
-	return eKey, nil
+	i.store[id] = Data{
+		data:                encryptedData,
+		encryptionKey:       hashedKey,
+		encryptionAlgorithm: i.cfg.EncryptionAlgorithm,
+	}
+
+	return key, nil
 }
 
-func (i *InMemoryDatastore) Retrieve(ctx context.Context, id string, key string) ([]byte, error) {
+func (i *InMemoryDatastore) Retrieve(ctx context.Context, id string, key []byte) ([]byte, error) {
 	ctxErr := ctx.Err()
 	if ctxErr != nil {
 		i.logger.Error("failed to retrieve data for id", "id", id, "error", ctxErr)
@@ -76,7 +91,7 @@ func (i *InMemoryDatastore) Retrieve(ctx context.Context, id string, key string)
 		i.logger.Error("failed to retrieve data", "missing id")
 		return nil, fmt.Errorf("failed to retrieve data, missing id")
 	}
-	if key == "" {
+	if key == nil {
 		i.logger.Error("failed to retrieve data", "missing key")
 		return nil, fmt.Errorf("failed to retrieve data, missing key")
 	}
@@ -90,13 +105,17 @@ func (i *InMemoryDatastore) Retrieve(ctx context.Context, id string, key string)
 		return nil, fmt.Errorf("failed to retrieve data for key provided")
 	}
 
-	// If using AES-GCM authentication, an incorrect key will be rejected during decryption anyway, this is belt and braces.
-	if key != requestedData.encryptionKey {
-		i.logger.Error("failed to retrieve data for id", id, "key does not match")
-		return nil, fmt.Errorf("failed to retrieve data - incorrect key")
+	verified, err := encryption.HashVerify(key, requestedData.encryptionKey, i.logger)
+	if !verified {
+		i.logger.Error("failed to retrieve data for id", "id", id, "reason", "encryption key incorrect")
+		return nil, fmt.Errorf("failed to retrieve data - encryption key incorrect")
+	}
+	if err != nil {
+		i.logger.Error("failed to retrieve data for id", "id", id, "error", err)
+		return nil, fmt.Errorf("failed to retrieve data: %w", err)
 	}
 
-	decryptedData, err := encryption.DecryptData(requestedData.data, key)
+	decryptedData, err := encryption.DecryptData(requestedData.data, key, id, i.logger, requestedData.encryptionAlgorithm)
 	if err != nil {
 		i.logger.Error("failed to retrieve data", "error", err)
 		return nil, fmt.Errorf("failed to retrieve data: %w", err)
@@ -105,7 +124,7 @@ func (i *InMemoryDatastore) Retrieve(ctx context.Context, id string, key string)
 	return decryptedData, nil
 }
 
-func (i *InMemoryDatastore) Update(ctx context.Context, data []byte, id string, key string) error {
+func (i *InMemoryDatastore) Update(ctx context.Context, data []byte, id string, key []byte) error {
 	ctxErr := ctx.Err()
 	if ctxErr != nil {
 		i.logger.Error("failed to update data for id", "id", id, "error", ctxErr)
@@ -115,7 +134,7 @@ func (i *InMemoryDatastore) Update(ctx context.Context, data []byte, id string, 
 		i.logger.Error("failed to update data", "missing id")
 		return fmt.Errorf("failed to update data, missing id")
 	}
-	if key == "" {
+	if key == nil {
 		i.logger.Error("failed to update data", "missing key")
 		return fmt.Errorf("failed to update data, missing key")
 	}
@@ -135,26 +154,38 @@ func (i *InMemoryDatastore) Update(ctx context.Context, data []byte, id string, 
 	// Checking the supplied key is the correct key for this id, the id being the map key.
 	// So does the the encryption key in the entry stored for that map key(the id) match the encryption key provided as a param
 
-	if entry.encryptionKey != key { // TODO: Store a hash of the key instead
-		i.logger.Error("failed to update data for id", "id", id, "encryption key incorrect")
+	verified, err := encryption.HashVerify(key, entry.encryptionKey, i.logger)
+	if !verified {
+		i.logger.Error("failed to update data for id", "id", id, "reason", "encryption key incorrect")
 		return fmt.Errorf("failed to update data - encryption key incorrect")
 	}
+	if err != nil {
+		i.logger.Error("failed to update data for id", "id", id, "error", err)
+		return fmt.Errorf("failed to update data: %w", err)
+	}
 
-	encryptedData, err := encryption.EncryptData(data, key)
+	encryptedData, err := encryption.EncryptData(data, key, id, i.logger, entry.encryptionAlgorithm)
 	if err != nil {
 		i.logger.Error("failed to update data for id", id, "error", err)
 		return fmt.Errorf("failed to update data: %w", err)
 	}
 
+	hashedKey, err := encryption.KeyHash(key, i.logger)
+	if err != nil {
+		i.logger.Error("failed to update data for id", "id", id, "error", err)
+		return fmt.Errorf("failed to update data: %w", err)
+	}
+
 	updatedData := Data{
-		data:          encryptedData,
-		encryptionKey: key, // may be able to remove this depending on the authentication method we go with
+		data:                encryptedData,
+		encryptionKey:       hashedKey,
+		encryptionAlgorithm: entry.encryptionAlgorithm,
 	}
 	i.store[id] = updatedData
 	return nil
 }
 
-func (i *InMemoryDatastore) Delete(ctx context.Context, id string, key string) error {
+func (i *InMemoryDatastore) Delete(ctx context.Context, id string, key []byte) error {
 	ctxErr := ctx.Err()
 	if ctxErr != nil {
 		i.logger.Error("failed to delete data for id", "id", id, "error", ctxErr)
@@ -164,7 +195,7 @@ func (i *InMemoryDatastore) Delete(ctx context.Context, id string, key string) e
 		i.logger.Error("failed to delete data", "missing id")
 		return fmt.Errorf("failed to delete data, missing id")
 	}
-	if key == "" {
+	if key == nil {
 		i.logger.Error("failed to delete data", "missing key")
 		return fmt.Errorf("failed to delete data, missing key")
 	}
@@ -176,9 +207,14 @@ func (i *InMemoryDatastore) Delete(ctx context.Context, id string, key string) e
 		return fmt.Errorf("failed to delete data - id not found in map")
 	}
 
-	if entry.encryptionKey != key { // TODO: Store a hash of the key instead
-		i.logger.Error("failed to delete data for id", "id", id, "encryption key incorrect")
+	verified, err := encryption.HashVerify(key, entry.encryptionKey, i.logger)
+	if !verified {
+		i.logger.Error("failed to delete data for id", "id", id, "reason", "encryption key incorrect")
 		return fmt.Errorf("failed to delete data - encryption key incorrect")
+	}
+	if err != nil {
+		i.logger.Error("failed to delete data for id", "id", id, "error", err)
+		return fmt.Errorf("failed to delete data: %w", err)
 	}
 
 	delete(i.store, id)

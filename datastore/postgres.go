@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/RogueAlmond70/Encryped_KV_Store_Aaron_King/encryption"
+	"github.com/RogueAlmond70/Encryped_KV_Store_Aaron_King/internal"
 	config "github.com/RogueAlmond70/Encryped_KV_Store_Aaron_King/internal"
-	"github.com/RogueAlmond70/SpeedyDarts/internal"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 )
@@ -27,7 +27,7 @@ type PostgresDatastore struct {
 }
 
 func NewPostgresDatastore(logger internal.Logger, sqldb *sql.DB, cfg config.Config) *PostgresDatastore {
-	return &Postgres{
+	return &PostgresDatastore{
 		logger: logger,
 		db:     sqldb,
 		cfg:    cfg,
@@ -49,31 +49,31 @@ func (p *PostgresDatastore) Migrate() error { // make this a function, it doesn'
 	return nil
 }
 
-func (p *PostgresDatastore) Store(ctx context.Context, data []byte, id string) (string, error) {
+func (p *PostgresDatastore) Store(ctx context.Context, data []byte, id string) ([]byte, error) {
 	ctxErr := ctx.Err()
 	if ctxErr != nil {
 		p.logger.Error("failed to store data for id", "id", id, "error", ctxErr)
-		return "", fmt.Errorf("failed to store data for id: %w", ctxErr)
+		return nil, fmt.Errorf("failed to store data for id: %w", ctxErr)
 	}
 	if id == "" {
 		p.logger.Error("failed to store data", "missing id")
-		return "", fmt.Errorf("failed to store data, missing id")
+		return nil, fmt.Errorf("failed to store data, missing id")
 	}
 	if data == nil {
 		p.logger.Error("failed to store data", "nil data")
-		return "", fmt.Errorf("failed to store data - nil data")
+		return nil, fmt.Errorf("failed to store data - nil data")
 	}
 
-	eKey, err := encryption.GenerateEncryptionKey()
+	eKey, err := encryption.GenerateEncryptionKey(p.logger)
 	if err != nil {
 		p.logger.Error("failed to store data for id", "id", id, "error", err)
-		return "", fmt.Errorf("failed to store data: %w", err)
+		return nil, fmt.Errorf("failed to store data: %w", err)
 	}
 
-	encryptedData, err := encryption.EncryptData(data, eKey)
+	encryptedData, err := encryption.EncryptData(data, eKey, id, p.logger, p)
 	if err != nil {
 		p.logger.Error("failed to store data for id", id, "error", err)
-		return "", fmt.Errorf("failed to store data: %w", err)
+		return nil, fmt.Errorf("failed to store data: %w", err)
 	}
 
 	// Call a method to update the database with the new data
@@ -87,19 +87,24 @@ func (p *PostgresDatastore) Store(ctx context.Context, data []byte, id string) (
 	return eKey, nil
 }
 
-func (p *PostgresDatastore) Retrieve(ctx context.Context, id string, key string) ([]byte, error) {
+func (p *PostgresDatastore) Retrieve(ctx context.Context, id string, key []byte) ([]byte, error) {
 	// TODO: Implement me
 	return nil, nil
 }
 
-func (p *PostgresDatastore) Update(ctx context.Context, data []byte, id string, key string) error {
+func (p *PostgresDatastore) Update(ctx context.Context, data []byte, id string, key []byte) error {
 	// TODO: Implement me
 	return nil
 }
 
-func (p *PostgresDatastore) Delete(ctx context.Context, id string, key string) error {
+func (p *PostgresDatastore) Delete(ctx context.Context, id string, key []byte) error {
 	// TODO: Implement me
 	return nil
+}
+
+func (p *PostgresDatastore) GetEncryptionAlgorithm(ctx context.Context, id string) (string, error) {
+	// TODO: Implement me
+	return "", nil
 }
 
 func getPostgresConnStr(cfg *config.Config) string {
