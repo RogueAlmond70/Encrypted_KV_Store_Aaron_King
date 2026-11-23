@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:17
+    profiles: ["postgres"]
     environment:
       POSTGRES_USER: kv
       POSTGRES_PASSWORD: kv
@@ -13,19 +14,12 @@ services:
       timeout: 5s
       retries: 20
 
-  memory:
+  server:
     image: kv-store
     build: .
     environment:
-      DATASTORE_TYPE: MEMORY
-    ports:
-      - "8080:8080"
-
-  postgres-store:
-    image: kv-store
-    build: .
-    environment:
-      DATASTORE_TYPE: POSTGRES
+      DATASTORE_TYPE: ${DATASTORE_TYPE:-MEMORY}
+      ENCRYPTION_ALGORITHM: AES_GCM
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
       POSTGRES_USER: kv
@@ -35,10 +29,11 @@ services:
       POSTGRES_RETRY: "10"
       POSTGRES_RETRY_DELAY: 2s
     ports:
-      - "8081:8080"
+      - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
+        required: false
 
 volumes:
   pgdata:

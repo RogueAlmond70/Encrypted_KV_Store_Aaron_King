@@ -2,34 +2,22 @@
 
 HTTP service that stores `[]byte` values under an id. Each entry gets its own 32-byte key. The service keeps a SHA-256 hash of that key and the ciphertext. The raw key is returned once, on store, and must be sent back to retrieve, update, or delete.
 
-The default backend is an in-memory map. Set `DATASTORE_TYPE=POSTGRES` to use Postgres instead. The schema is applied on startup.
-
 ## Run
 
-Requires Go 1.27.
+`docker compose up --build` starts one server on port `8080` with the in-memory store.
 
-```sh
-go run .
+To use Postgres instead, start the database as well. On Windows PowerShell:
+
+```powershell
+$env:DATASTORE_TYPE = "POSTGRES"
+docker compose --profile postgres up --build
 ```
 
-The process listens on `:8080` and logs to stdout. With no environment set, it uses the in-memory store and AES-GCM.
+The server still listens on port `8080`. The database `kv` is created by the Postgres image, with user `kv` and password `kv`. On startup the server applies the goose migration in `datastore/migrations`, which creates `key_value_entries` (`id`, `encrypted_data`, `key_hash`, `encryption_algorithm`, timestamps). Postgres data is kept in the `pgdata` volume. Restarting an in-memory server drops its entries.
 
-Copy `.env.example` to `.env` to override settings. A `.env` in this directory, or in a parent directory, is loaded over the process environment. A missing file is ignored.
+The server uses `AES_GCM`, set by `ENCRYPTION_ALGORITHM` on the `server` service in `docker-compose.yml`. Change that value to `AES_GCM_SIV` or `CHACHA20_POLY1305`, then run Compose again. The algorithm is stored on the entry, so a request decrypts with the value saved when that entry was stored. A new value applies only to entries stored after the change.
 
 On Windows PowerShell, call `curl.exe`. `curl` is an alias for `Invoke-WebRequest`.
-
-## Docker
-
-`docker compose up --build` starts Postgres and two servers from the same image.
-
-| Port | Backend |
-| --- | --- |
-| `8080` | in-memory |
-| `8081` | Postgres |
-
-The Postgres container uses host name `postgres` on the Compose network. The database `kv` is created by the Postgres image. The server applies the goose migration on startup. Data for that server is kept in the `pgdata` volume, so it is still there after `postgres-store` restarts. Restarting the memory server drops its entries.
-
-Use the same requests as below, and change `8080` to `8081` to exercise Postgres.
 
 ## Store, then retrieve
 
@@ -81,31 +69,6 @@ One route, `/yoti/{id}`.
 | `409` | `POST` for an id that already exists |
 | `405` | Method other than the four above |
 | `500` | Anything else. The body is `failed to handle request` |
-
-## Configuration
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `DATASTORE_TYPE` | `MEMORY` | `MEMORY` or `POSTGRES` |
-| `ENCRYPTION_ALGORITHM` | `AES_GCM` | `AES_GCM`, `AES_GCM_SIV`, or `CHACHA20_POLY1305` |
-| `POSTGRES_HOST` | `localhost` | Postgres host |
-| `POSTGRES_PORT` | `5432` | Postgres port |
-| `POSTGRES_USER` | empty | Postgres user |
-| `POSTGRES_PASSWORD` | empty | Postgres password |
-| `POSTGRES_DB` | empty | Database name. `POSTGRES_DB_NAME` is accepted if `POSTGRES_DB` is unset |
-| `POSTGRES_SSL_MODE` | `disable` | `sslmode` in the connection string |
-| `POSTGRES_RETRY` | `5` | Connection attempts before exit |
-| `POSTGRES_RETRY_DELAY` | `5s` | Pause between attempts |
-
-The algorithm is stored on the entry. Later requests decrypt with that value, so changing `ENCRYPTION_ALGORITHM` only affects new stores.
-
-Postgres example, after the database exists and is reachable:
-
-```sh
-DATASTORE_TYPE=POSTGRES POSTGRES_USER=kv POSTGRES_PASSWORD=kv POSTGRES_DB=kv go run .
-```
-
-Startup runs the goose migration in `datastore/migrations`. It creates `key_value_entries` (`id`, `encrypted_data`, `key_hash`, `encryption_algorithm`, timestamps).
 
 ## Brief
 

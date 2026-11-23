@@ -40,6 +40,23 @@ func TestWriteStoreError(t *testing.T) {
 	}
 }
 
+func TestStatusRecorderCapturesTheFirstStatus(t *testing.T) {
+	rec := &statusRecorder{ResponseWriter: httptest.NewRecorder()}
+	rec.WriteHeader(http.StatusCreated)
+	rec.WriteHeader(http.StatusOK)
+	if rec.status != http.StatusCreated {
+		t.Fatalf("status %d", rec.status)
+	}
+
+	implicit := &statusRecorder{ResponseWriter: httptest.NewRecorder()}
+	if _, err := implicit.Write([]byte("ok")); err != nil {
+		t.Fatal(err)
+	}
+	if implicit.status != http.StatusOK {
+		t.Fatalf("status %d", implicit.status)
+	}
+}
+
 func TestLoadProjectEnvMissingFile(t *testing.T) {
 	t.Chdir(t.TempDir())
 	if err := loadProjectEnv(); err != nil {

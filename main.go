@@ -37,7 +37,7 @@ func main() {
 
 		if err != nil {
 			logger.Error("failed to setup postgres datastore", "error", err)
-			os.Exit(1) 
+			os.Exit(1)
 		}
 		defer db.Close()
 
@@ -60,30 +60,29 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	type StoreRequest struct {
+	type StoreOrUpdateRequest struct {
 		Data []byte `json:"data"`
-	}
-
-	type UpdateRequest struct {
-		Data []byte `json:"data"`
-		Key  string `json:"key"`
 	}
 
 	mux.HandleFunc("/yoti/{id}", func(w http.ResponseWriter, r *http.Request) {
-		var (
-			storerequest  StoreRequest
-			updaterequest UpdateRequest
-		)
+		rec := &statusRecorder{ResponseWriter: w}
+		defer func() {
+			logger.Info("request", "method", r.Method, "id", r.PathValue("id"), "status", rec.status)
+		}()
+		w = rec
+
+		var storeOrUpdateRequest StoreOrUpdateRequest
+
 		switch r.Method {
 		case http.MethodPost:
 			defer r.Body.Close()
-			err := json.NewDecoder(r.Body).Decode(&storerequest)
+			err := json.NewDecoder(r.Body).Decode(&storeOrUpdateRequest)
 			if err != nil {
 				http.Error(w, "Invalid request body", http.StatusBadRequest)
 				return
 			}
 			id := r.PathValue("id")
-			encryptionKey, err := keyvalue.Store(r.Context(), storerequest.Data, id)
+			encryptionKey, err := keyvalue.Store(r.Context(), storeOrUpdateRequest.Data, id)
 			if err != nil {
 				writeStoreError(w, err)
 				return
@@ -120,13 +119,13 @@ func main() {
 			defer r.Body.Close()
 			id := r.PathValue("id")
 
-			err := json.NewDecoder(r.Body).Decode(&updaterequest)
+			err := json.NewDecoder(r.Body).Decode(&storeOrUpdateRequest)
 			if err != nil {
 				http.Error(w, "Invalid request body", http.StatusBadRequest)
 				return
 			}
 
-			data := updaterequest.Data
+			data := storeOrUpdateRequest.Data
 			key, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Encryption-Key"))
 			if err != nil {
 				http.Error(w, "failed to handle request", http.StatusBadRequest)
@@ -163,6 +162,26 @@ func main() {
 
 	})
 	http.ListenAndServe(":8080", mux)
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (s *statusRecorder) WriteHeader(code int) {
+	if s.status != 0 {
+		return
+	}
+	s.status = code
+	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s *statusRecorder) Write(b []byte) (int, error) {
+	if s.status == 0 {
+		s.status = http.StatusOK
+	}
+	return s.ResponseWriter.Write(b)
 }
 
 func writeStoreError(w http.ResponseWriter, err error) {
